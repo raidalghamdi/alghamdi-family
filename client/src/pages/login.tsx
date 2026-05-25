@@ -20,7 +20,7 @@ function BrandMark() {
 export default function LoginPage() {
   const { signIn } = useAuth();
   const { t, lang, setLang, dir } = useLanguage();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +29,8 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!email.trim()) {
-      setError(t("login_required_email"));
+    if (!identifier.trim()) {
+      setError(t("login_required_name"));
       return;
     }
     if (!password) {
@@ -38,7 +38,7 @@ export default function LoginPage() {
       return;
     }
     setSubmitting(true);
-    const { error: signInError } = await signIn(email.trim(), password);
+    const { error: signInError } = await signIn(identifier.trim(), password);
     setSubmitting(false);
     if (signInError) {
       setError(t("login_invalid"));
@@ -97,17 +97,16 @@ export default function LoginPage() {
                 htmlFor="email"
                 className="block text-[11px] uppercase tracking-[0.16em] font-semibold text-secondary/70"
               >
-                {t("login_email")}
+                {t("login_name")}
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                inputMode="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={t("login_email_placeholder")}
-                data-testid="input-email"
+                id="identifier"
+                type="text"
+                autoComplete="username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder={t("login_name_placeholder")}
+                data-testid="input-name"
                 className="w-full rounded-lg bg-white/5 border border-white/10 px-3.5 py-2.5 text-white placeholder:text-white/30 outline-none focus:border-[#8B84D7] focus:bg-white/10 transition-colors"
                 disabled={submitting}
                 dir="ltr"

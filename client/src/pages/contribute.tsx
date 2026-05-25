@@ -8,11 +8,12 @@ import {
   fetchSettings,
   fetchContributionsByMember,
   insertContribution,
-  computeMonthlyTarget,
+  fetchMembers,
+  fetchCostLines,
+  computeMonthlyTargetFromLines,
   type Contribution,
 } from "@/lib/supabaseQueries";
 import { supabase } from "@/lib/supabase";
-import { MEMBER_NAMES } from "@shared/schema";
 import { formatSAR, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -75,8 +76,10 @@ export default function ContributePage() {
   const [amountOverride, setAmountOverride] = useState<string>("");
 
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const { data: members = [] } = useQuery({ queryKey: ["members"], queryFn: fetchMembers });
+  const { data: costLines = [] } = useQuery({ queryKey: ["costLines"], queryFn: fetchCostLines });
 
-  const target = settings ? computeMonthlyTarget(settings) : 0;
+  const target = computeMonthlyTargetFromLines(costLines, members.length);
 
   const { data: myContributions, isLoading: loadingContribs } = useQuery({
     queryKey: ["contributions", memberName],
@@ -184,8 +187,8 @@ export default function ContributePage() {
                 <SelectValue placeholder={t("field_member_placeholder")} />
               </SelectTrigger>
               <SelectContent>
-                {MEMBER_NAMES.map((m) => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

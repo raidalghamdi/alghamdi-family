@@ -1,12 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowRight, ReceiptText, Users, Wallet, CalendarClock, TrendingUp, Info } from "lucide-react";
+import { ArrowRight, ReceiptText, Users, Wallet, TrendingUp, Info, Layers } from "lucide-react";
 import type { Summary, Expense } from "@shared/schema";
 import { formatSAR, formatDate } from "@/lib/format";
 import { AvatarCircle } from "@/components/avatar-circle";
 import { cn } from "@/lib/utils";
-import { fetchExpenses, fetchSettings, fetchContributions, computeSummary } from "@/lib/supabaseQueries";
+import {
+  fetchExpenses,
+  fetchSettings,
+  fetchContributions,
+  fetchMembers,
+  fetchCostLines,
+  computeSummary,
+} from "@/lib/supabaseQueries";
 import { useLanguage } from "@/lib/language-context";
 import {
   Dialog,
@@ -39,7 +46,6 @@ function StatusPill({ status }: { status: "Credit" | "Owes group" | "Settled" })
   );
 }
 
-// ─── KPI Detail Dialog ─────────────────────────────────────────────────────
 interface KpiDialogProps {
   open: boolean;
   onClose: () => void;
@@ -65,9 +71,9 @@ function KpiDialog({ open, onClose, title, value, description, expenses, lang, t
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                  <th className="pb-2 pe-2 font-semibold text-start">{t("col_date" as any)}</th>
-                  <th className="pb-2 px-2 font-semibold text-start">{t("col_description" as any)}</th>
-                  <th className="pb-2 ps-2 font-semibold text-end">{t("col_amount" as any)}</th>
+                  <th className="pb-2 pe-2 font-semibold text-start">{t("col_date")}</th>
+                  <th className="pb-2 px-2 font-semibold text-start">{t("col_description")}</th>
+                  <th className="pb-2 ps-2 font-semibold text-end">{t("col_amount")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,6 +103,44 @@ function KpiDialog({ open, onClose, title, value, description, expenses, lang, t
   );
 }
 
+function WelcomeBanner() {
+  const { t } = useLanguage();
+  return (
+    <section
+      className="rounded-2xl border border-primary/30 bg-primary/5 p-6 md:p-8 shadow-sm"
+      data-testid="welcome-banner"
+    >
+      <div className="flex items-start gap-3">
+        <span className="rounded-lg bg-primary/15 text-primary p-2 mt-0.5">
+          <Info className="h-5 w-5" />
+        </span>
+        <div className="flex-1">
+          <h2 className="font-display text-lg md:text-xl font-bold">{t("welcome_banner_title")}</h2>
+          <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{t("welcome_banner_body")}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/members"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:brightness-95"
+              data-testid="link-welcome-members"
+            >
+              <Users className="h-4 w-4" />
+              {t("welcome_banner_cta_members")}
+            </Link>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3.5 py-2 text-sm font-semibold hover:bg-muted"
+              data-testid="link-welcome-settings"
+            >
+              <Layers className="h-4 w-4" />
+              {t("welcome_banner_cta_settings")}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const { t, lang } = useLanguage();
   const [, navigate] = useLocation();
@@ -110,6 +154,14 @@ export default function DashboardPage() {
     queryKey: ["settings"],
     queryFn: fetchSettings,
   });
+  const { data: members = [], isLoading: loadingMembers } = useQuery({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+  });
+  const { data: costLines = [], isLoading: loadingCostLines } = useQuery({
+    queryKey: ["costLines"],
+    queryFn: fetchCostLines,
+  });
   const { data: allContributions = [] } = useQuery({
     queryKey: ["contributions"],
     queryFn: fetchContributions,
@@ -121,11 +173,11 @@ export default function DashboardPage() {
   );
 
   const summary = useMemo<Summary | null>(() => {
-    if (!expenses || !settings) return null;
-    return computeSummary(expenses, settings, approvedContributions);
-  }, [expenses, settings, approvedContributions]);
+    if (!expenses) return null;
+    return computeSummary(expenses, members, costLines, approvedContributions);
+  }, [expenses, members, costLines, approvedContributions]);
 
-  const isLoading = loadingExpenses || loadingSettings;
+  const isLoading = loadingExpenses || loadingSettings || loadingMembers || loadingCostLines;
 
   if (isLoading || !summary) {
     return (
@@ -144,6 +196,7 @@ export default function DashboardPage() {
   const expenseCount = expenses?.length ?? 0;
   const paidExpenses = (expenses ?? []).filter((e) => e.status === "Paid");
   const unpaidExpenses = (expenses ?? []).filter((e) => e.status === "Unpaid");
+  const showWelcome = members.length === 0 || costLines.length === 0;
 
   function openKpi(title: string, value: string, description?: string, exps?: Expense[]) {
     setKpiDialog({ title, value, description, expenses: exps });
@@ -151,9 +204,10 @@ export default function DashboardPage() {
 
   return (
     <div className="p-5 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8">
+      {showWelcome && <WelcomeBanner />}
+
       {/* Hero KPI band */}
       <section className="grid gap-5 lg:grid-cols-3">
-        {/* Hero card: 2 cols */}
         <div className="lg:col-span-2 relative overflow-hidden rounded-2xl hero-brand text-white shadow-lg">
           <div className="absolute inset-0 opacity-[0.07]" aria-hidden>
             <svg width="100%" height="100%" preserveAspectRatio="none">
@@ -180,13 +234,13 @@ export default function DashboardPage() {
                     className="cursor-pointer group"
                     onClick={() => openKpi(
                       t("hero_annual_budget"),
-                      formatSAR(summary.first_year_total, {}, lang),
-                      lang === "ar" ? "الإيجار السنوي + تكلفة التجهيز + التشغيل + العامل" : "Annual rent + setup + operating + worker",
+                      formatSAR(summary.annual_budget, {}, lang),
+                      t("hero_year1_commitment"),
                     )}
                   >
                     <div className="text-[11px] uppercase tracking-wider text-secondary/70 font-medium group-hover:text-white/90 transition-colors">{t("hero_annual_budget")}</div>
                     <div className="kpi-number text-4xl md:text-5xl mt-2 text-primary group-hover:brightness-110 transition-all" data-testid="kpi-annual-budget">
-                      {formatSAR(summary.first_year_total, { withSuffix: false }, lang)}
+                      {formatSAR(summary.annual_budget, { withSuffix: false }, lang)}
                     </div>
                     <div className="text-xs text-secondary/70 mt-1.5 font-medium">{t("hero_year1_commitment")}</div>
                   </div>
@@ -199,13 +253,13 @@ export default function DashboardPage() {
                     className="cursor-pointer group"
                     onClick={() => openKpi(
                       t("hero_per_member"),
-                      formatSAR(summary.per_member_share, { decimals: 0 }, lang),
-                      lang === "ar" ? "المدفوع الكلي ÷ 9 أعضاء" : "Total paid ÷ 9 members",
+                      formatSAR(summary.per_member_monthly_target, { decimals: 0 }, lang),
+                      t("hero_per_member_hint"),
                     )}
                   >
                     <div className="text-[11px] uppercase tracking-wider text-secondary/70 font-medium group-hover:text-white/90 transition-colors">{t("hero_per_member")}</div>
                     <div className="kpi-number text-4xl md:text-5xl mt-2 text-white group-hover:brightness-110 transition-all" data-testid="kpi-per-share">
-                      {formatSAR(summary.per_member_share, { decimals: 0, withSuffix: false }, lang)}
+                      {formatSAR(summary.per_member_monthly_target, { decimals: 0, withSuffix: false }, lang)}
                     </div>
                     <div className="text-xs text-secondary/70 mt-1.5 font-medium">{t("hero_per_member_hint")}</div>
                   </div>
@@ -233,7 +287,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right rail: total paid */}
         <Tooltip>
           <TooltipTrigger asChild>
             <div
@@ -261,35 +314,17 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-auto pt-5 grid grid-cols-2 gap-4 border-t border-border">
-                <div
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openKpi(t("kpi_second_rent"), formatSAR(summary.second_rent_due, {}, lang),
-                      t("kpi_in_months").replace("{n}", String(summary.months_until_2nd_rent)));
-                  }}
-                >
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{t("kpi_second_rent")}</div>
-                  <div className="font-display font-bold text-lg mt-1 tabular" data-testid="kpi-second-rent">
-                    {formatSAR(summary.second_rent_due, {}, lang)}
-                  </div>
-                  <div className="text-[10px] text-accent font-semibold mt-0.5">
-                    {t("kpi_in_months").replace("{n}", String(summary.months_until_2nd_rent))}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{t("kpi_members_count")}</div>
+                  <div className="font-display font-bold text-lg mt-1 tabular" data-testid="kpi-members-count">
+                    {summary.members_count}
                   </div>
                 </div>
-                <div
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openKpi(t("kpi_monthly_save"), formatSAR(summary.monthly_save_needed, { decimals: 0 }, lang),
-                      t("kpi_per_member"));
-                  }}
-                >
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{t("kpi_monthly_save")}</div>
-                  <div className="font-display font-bold text-lg mt-1 tabular" data-testid="kpi-monthly-save">
-                    {formatSAR(summary.monthly_save_needed, { decimals: 0 }, lang)}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{t("kpi_cost_lines_count")}</div>
+                  <div className="font-display font-bold text-lg mt-1 tabular" data-testid="kpi-cost-lines-count">
+                    {costLines.length}
                   </div>
-                  <div className="text-[10px] text-muted-foreground font-medium mt-0.5">{t("kpi_per_member")}</div>
                 </div>
               </div>
             </div>
@@ -304,9 +339,9 @@ export default function DashboardPage() {
           icon={<Wallet className="h-4 w-4" />}
           label={t("kpi_annual_budget")}
           value={formatSAR(summary.annual_budget, {}, lang)}
-          hint={t("kpi_rent_operating_worker")}
+          hint={t("hint_across_all")}
           testId="kpi-annual"
-          onClick={() => openKpi(t("kpi_annual_budget"), formatSAR(summary.annual_budget, {}, lang), t("kpi_rent_operating_worker"))}
+          onClick={() => openKpi(t("kpi_annual_budget"), formatSAR(summary.annual_budget, {}, lang), t("hint_across_all"))}
         />
         <KpiCard
           icon={<ReceiptText className="h-4 w-4" />}
@@ -318,7 +353,7 @@ export default function DashboardPage() {
             t("kpi_ledger_entries").replace("{n}", String(expenseCount)), expenses ?? [])}
         />
         <KpiCard
-          icon={<CalendarClock className="h-4 w-4" />}
+          icon={<Wallet className="h-4 w-4" />}
           label={t("kpi_total_unpaid")}
           value={formatSAR(summary.total_unpaid, {}, lang)}
           hint={summary.total_unpaid > 0 ? t("kpi_unpaid_entries") : t("kpi_no_unpaid")}
@@ -330,7 +365,7 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* Members + Recent expenses (60/40) */}
+      {/* Members + Recent expenses */}
       <section className="grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3 rounded-2xl border border-card-border bg-card p-5 md:p-6 shadow-sm">
           <div className="flex items-end justify-between mb-5">
@@ -342,6 +377,11 @@ export default function DashboardPage() {
             <Users className="h-5 w-5 text-muted-foreground hidden sm:block" />
           </div>
 
+          {summary.members.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground" data-testid="empty-members">
+              {t("members_empty")}
+            </div>
+          ) : (
           <div className="overflow-x-auto -mx-5 md:-mx-6 px-5 md:px-6">
             <table className="w-full text-sm">
               <thead>
@@ -392,6 +432,7 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         <div className="lg:col-span-2 rounded-2xl border border-card-border bg-card p-5 md:p-6 shadow-sm">
@@ -417,11 +458,7 @@ export default function DashboardPage() {
           ) : (
             <ul className="divide-y divide-border/60">
               {recent.map((e) => (
-                <li
-                  key={e.id}
-                  className="py-3 flex items-start gap-3"
-                  data-testid={`row-recent-${e.id}`}
-                >
+                <li key={e.id} className="py-3 flex items-start gap-3" data-testid={`row-recent-${e.id}`}>
                   <AvatarCircle name={e.paid_by} size={32} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2">
@@ -443,7 +480,6 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* KPI Detail Dialog */}
       {kpiDialog && (
         <KpiDialog
           open={!!kpiDialog}
@@ -460,15 +496,7 @@ export default function DashboardPage() {
   );
 }
 
-function KpiCard({
-  icon,
-  label,
-  value,
-  hint,
-  testId,
-  tone,
-  onClick,
-}: {
+function KpiCard({ icon, label, value, hint, testId, tone, onClick }: {
   icon: React.ReactNode;
   label: string;
   value: string;

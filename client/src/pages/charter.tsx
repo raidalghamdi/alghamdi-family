@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/lib/language-context";
-import { fetchGovernance } from "@/lib/supabaseQueries";
-import { MEMBER_NAMES } from "@shared/schema";
+import { fetchGovernance, fetchMembers } from "@/lib/supabaseQueries";
 import { Crown, Shield, Users, BookOpen, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GovernanceHistory } from "@/components/governance-history";
@@ -49,6 +48,7 @@ export default function CharterPage() {
   const { t, lang } = useLanguage();
 
   const { data: governance } = useQuery({ queryKey: ["governance"], queryFn: fetchGovernance });
+  const { data: members = [] } = useQuery({ queryKey: ["members"], queryFn: fetchMembers });
 
   const introText = governance?.charter_text || t("charter_intro_fallback");
 
@@ -112,22 +112,28 @@ export default function CharterPage() {
         <p className="text-sm text-muted-foreground leading-relaxed mb-4">
           {t("charter_members_desc")}
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {MEMBER_NAMES.map((name) => (
-            <div
-              key={name}
-              className="rounded-xl border border-border bg-muted/30 p-3 flex items-center gap-2.5"
-            >
-              <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-bold shrink-0">
-                {name.slice(0, 2).toUpperCase()}
+        {members.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+            {t("charter_no_members")}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {members.map((m) => (
+              <div
+                key={m.id}
+                className="rounded-xl border border-border bg-muted/30 p-3 flex items-center gap-2.5"
+                data-testid={`charter-member-${m.id}`}
+              >
+                <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center text-primary text-xs font-bold shrink-0">
+                  {m.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm truncate">{m.name}</div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="font-semibold text-sm truncate">{name}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 italic">{t("charter_members_coming_soon")}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Section>
 
       {/* Budget Controller */}

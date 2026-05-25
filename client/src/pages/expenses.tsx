@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Expense } from "@shared/schema";
-import { CATEGORIES, MEMBER_NAMES } from "@shared/schema";
+import { CATEGORIES } from "@shared/schema";
 import { formatSAR, formatDate } from "@/lib/format";
 import { AvatarCircle } from "@/components/avatar-circle";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useLanguage } from "@/lib/language-context";
 import { useMember } from "@/lib/member-context";
-import { fetchExpenses, deleteExpense, fetchGovernance } from "@/lib/supabaseQueries";
+import { fetchExpenses, deleteExpense, fetchGovernance, fetchMembers } from "@/lib/supabaseQueries";
 import { AttachReceiptDialog } from "@/components/attach-receipt-dialog";
 
 const ALL = "__ALL__";
@@ -60,6 +60,7 @@ export default function ExpensesPage() {
     queryFn: fetchExpenses,
   });
   const { data: governance } = useQuery({ queryKey: ["governance"], queryFn: fetchGovernance });
+  const { data: members = [] } = useQuery({ queryKey: ["members"], queryFn: fetchMembers });
   const budgetController = governance?.budget_controller ?? "Raid";
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>(ALL);
@@ -141,7 +142,7 @@ export default function ExpensesPage() {
           <SelectTrigger data-testid="select-filter-paid-by"><SelectValue placeholder={t("filter_all_members")} /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>{t("filter_all_members")}</SelectItem>
-            {MEMBER_NAMES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+            {(members ?? []).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as any)}>

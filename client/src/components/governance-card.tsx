@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/lib/language-context";
-import { updateGovernanceField, type GovernanceField } from "@/lib/supabaseQueries";
-import { MEMBER_NAMES } from "@shared/schema";
+import { updateGovernanceField, fetchMembers, type GovernanceField } from "@/lib/supabaseQueries";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User, Pencil, Check, X } from "lucide-react";
@@ -35,6 +34,7 @@ export function EditableGovernanceCard({
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value);
+  const { data: members = [] } = useQuery({ queryKey: ["members"], queryFn: fetchMembers });
 
   const mutation = useMutation({
     mutationFn: () => updateGovernanceField(field, draft, changedBy, value),
@@ -84,8 +84,8 @@ export function EditableGovernanceCard({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MEMBER_NAMES.map((n) => (
-                <SelectItem key={n} value={n}>{n}</SelectItem>
+              {members.map((m) => (
+                <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

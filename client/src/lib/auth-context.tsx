@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { looksLikeEmail, nameToSyntheticEmail } from "./supabaseQueries";
 
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (input: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -35,7 +36,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  async function signIn(email: string, password: string) {
+  async function signIn(input: string, password: string) {
+    const trimmed = input.trim();
+    const email = looksLikeEmail(trimmed) ? trimmed : nameToSyntheticEmail(trimmed);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
     return { error: null };

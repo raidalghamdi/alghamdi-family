@@ -4,11 +4,20 @@
  */
 
 import { supabase } from "./supabase";
-import type { Member, Settings, Expense, Summary, SummaryMember } from "@shared/schema";
-import { MEMBER_NAMES } from "@shared/schema";
+import type {
+  Member,
+  Settings,
+  Expense,
+  Summary,
+  SummaryMember,
+  CostLine,
+  Frequency,
+  ReportSettings,
+  ReportKey,
+} from "@shared/schema";
 
 // ──────────────────────────────────────────
-// Types for new tables
+// Types for ancillary tables
 // ──────────────────────────────────────────
 export interface Contribution {
   id: string;
@@ -56,7 +65,44 @@ export async function fetchMembers(): Promise<Member[]> {
     .select("*")
     .order("name", { ascending: true });
   if (error) throw new Error(error.message);
-  return data as Member[];
+  return (data ?? []) as Member[];
+}
+
+// Edge-function-backed admin actions (Patriarch only)
+export async function adminCreateMember(name: string, password: string) {
+  const { data, error } = await supabase.functions.invoke("family-admin", {
+    body: { action: "create", name, password },
+  });
+  if (error) throw new Error(((data as any)?.error) ?? error.message);
+  if ((data as any)?.error) throw new Error((data as any).error);
+  return data as { ok: true; id: string; email: string; name: string };
+}
+
+export async function adminRenameMember(id: string, name: string) {
+  const { data, error } = await supabase.functions.invoke("family-admin", {
+    body: { action: "rename", id, name },
+  });
+  if (error) throw new Error(((data as any)?.error) ?? error.message);
+  if ((data as any)?.error) throw new Error((data as any).error);
+  return data;
+}
+
+export async function adminResetPassword(id: string, password: string) {
+  const { data, error } = await supabase.functions.invoke("family-admin", {
+    body: { action: "reset_password", id, password },
+  });
+  if (error) throw new Error(((data as any)?.error) ?? error.message);
+  if ((data as any)?.error) throw new Error((data as any).error);
+  return data;
+}
+
+export async function adminDeleteMember(id: string) {
+  const { data, error } = await supabase.functions.invoke("family-admin", {
+    body: { action: "delete", id },
+  });
+  if (error) throw new Error(((data as any)?.error) ?? error.message);
+  if ((data as any)?.error) throw new Error((data as any).error);
+  return data;
 }
 
 // ──────────────────────────────────────────
@@ -84,6 +130,67 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
 }
 
 // ──────────────────────────────────────────
+// Cost lines
+// ──────────────────────────────────────────
+export async function fetchCostLines(): Promise<CostLine[]> {
+  const { data, error } = await supabase
+    .from("cost_lines")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CostLine[];
+}
+
+export async function insertCostLine(row: Omit<CostLine, "id" | "created_at" | "updated_at">): Promise<CostLine> {
+  const id = crypto.randomUUID();
+  const { data, error } = await supabase
+    .from("cost_lines")
+    .insert({ ...row, id })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CostLine;
+}
+
+export async function updateCostLine(id: string, patch: Partial<CostLine>): Promise<CostLine> {
+  const { data, error } = await supabase
+    .from("cost_lines")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CostLine;
+}
+
+export async function deleteCostLine(id: string): Promise<void> {
+  const { error } = await supabase.from("cost_lines").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Annualize a single cost line to an annual SAR amount
+export function annualizeCostLine(line: CostLine): number {
+  if (!line.active) return 0;
+  switch (line.frequency) {
+    case "one_time":
+      return line.amount;
+    case "monthly":
+      return line.amount * 12;
+    case "quarterly":
+      return line.amount * 4;
+    case "annual":
+      return line.amount;
+    default:
+      return 0;
+  }
+}
+
+export function sumAnnualBudget(lines: CostLine[]): number {
+  return lines.reduce((s, l) => s + annualizeCostLine(l), 0);
+}
+
+// ──────────────────────────────────────────
 // Expenses
 // ──────────────────────────────────────────
 export async function fetchExpenses(): Promise<Expense[]> {
@@ -93,7 +200,7 @@ export async function fetchExpenses(): Promise<Expense[]> {
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return data as Expense[];
+  return (data ?? []) as Expense[];
 }
 
 export async function deleteExpense(id: string): Promise<void> {
@@ -178,7 +285,6 @@ export async function fetchGovernance(): Promise<Governance> {
     .select("*")
     .eq("id", 1)
     .single();
-  // If governance table doesn't exist yet, return defaults
   if (error) {
     return {
       id: 1,
@@ -192,9 +298,6 @@ export async function fetchGovernance(): Promise<Governance> {
   return data as Governance;
 }
 
-// ──────────────────────────────────────────
-// Governance Changes (audit log)
-// ──────────────────────────────────────────
 export async function fetchGovernanceChanges(limit = 10): Promise<GovernanceChange[]> {
   const { data, error } = await supabase
     .from("governance_changes")
@@ -215,7 +318,6 @@ export async function updateGovernanceField(
   oldValue: string | null,
   note?: string,
 ): Promise<void> {
-  // Insert audit row first (id is BIGSERIAL — let the DB assign it)
   const { error: insertErr } = await supabase.from("governance_changes").insert({
     field,
     old_value: oldValue,
@@ -226,7 +328,6 @@ export async function updateGovernanceField(
   });
   if (insertErr) throw new Error(insertErr.message);
 
-  // Then update governance row
   const patch: Record<string, any> = { updated_at: new Date().toISOString() };
   patch[field] = newValue;
   const { error: updateErr } = await supabase
@@ -237,7 +338,7 @@ export async function updateGovernanceField(
 }
 
 // ──────────────────────────────────────────
-// Receipt attach (existing expenses + contributions)
+// Receipt attach
 // ──────────────────────────────────────────
 export async function uploadReceiptFile(file: File, folder: "expenses" | "contributions"): Promise<{ publicUrl: string; filename: string }> {
   if (file.size > 5 * 1024 * 1024) {
@@ -270,13 +371,57 @@ export async function attachReceiptToContribution(contributionId: string, public
 }
 
 // ──────────────────────────────────────────
-// Summary (computed client-side)
+// Report settings
+// ──────────────────────────────────────────
+const DEFAULT_REPORT_ENABLED: Record<ReportKey, boolean> = {
+  member_balance: true,
+  monthly_contributions: true,
+  expenses_by_category: true,
+  expenses_by_member: true,
+  pending_approvals: true,
+  annual_summary: true,
+  cost_lines_snapshot: true,
+  governance_history: true,
+};
+
+export async function fetchReportSettings(): Promise<ReportSettings> {
+  const { data, error } = await supabase
+    .from("report_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    console.warn("fetchReportSettings:", error.message);
+    return { id: 1, enabled: { ...DEFAULT_REPORT_ENABLED } };
+  }
+  if (!data) return { id: 1, enabled: { ...DEFAULT_REPORT_ENABLED } };
+  return {
+    id: 1,
+    enabled: { ...DEFAULT_REPORT_ENABLED, ...((data.enabled as Record<ReportKey, boolean>) ?? {}) },
+    updated_at: data.updated_at,
+  };
+}
+
+export async function updateReportSettings(enabled: Record<ReportKey, boolean>): Promise<void> {
+  // Upsert id=1
+  const { error } = await supabase
+    .from("report_settings")
+    .upsert({ id: 1, enabled, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  if (error) throw new Error(error.message);
+}
+
+// ──────────────────────────────────────────
+// Summary (computed client-side from live data)
 // ──────────────────────────────────────────
 export function computeSummary(
   expenses: Expense[],
-  settings: Settings,
+  members: Member[],
+  costLines: CostLine[],
   approvedContributions: Contribution[] = []
 ): Summary {
+  const members_count = members.length;
+  const annual_budget = sumAnnualBudget(costLines);
+
   const total_expenses = expenses.reduce((s, e) => s + e.amount, 0);
   const total_paid = expenses
     .filter((e) => e.status === "Paid")
@@ -285,62 +430,63 @@ export function computeSummary(
     .filter((e) => e.status === "Unpaid")
     .reduce((s, e) => s + e.amount, 0);
 
-  const per_member_share = total_paid / MEMBER_NAMES.length;
+  const per_member_share = members_count > 0 ? annual_budget / members_count : 0;
+  const per_member_monthly_target = members_count > 0 ? per_member_share / 12 : 0;
 
-  const members: SummaryMember[] = MEMBER_NAMES.map((name) => {
-    // Direct expenses paid by this member
+  const memberRows: SummaryMember[] = members.map((m) => {
     const directPaid = expenses
-      .filter((e) => e.status === "Paid" && e.paid_by === name)
+      .filter((e) => e.status === "Paid" && e.paid_by === m.name)
       .reduce((s, e) => s + e.amount, 0);
-    // Approved monthly contributions by this member
     const contributionsPaid = approvedContributions
-      .filter((c) => c.status === "Approved" && c.member_name === name)
+      .filter((c) => c.status === "Approved" && c.member_name === m.name)
       .reduce((s, c) => s + c.amount, 0);
     const paid = directPaid + contributionsPaid;
     const balance = paid - per_member_share;
     let status: SummaryMember["status"] = "Settled";
     if (balance > 100) status = "Credit";
     else if (balance < -100) status = "Owes group";
-    return { name, paid, share: per_member_share, balance, status };
+    return { name: m.name, paid, share: per_member_share, balance, status };
   });
 
-  const annual_budget =
-    settings.annual_rent +
-    settings.monthly_operating * 12 +
-    settings.worker_monthly * 12;
-  const first_year_total = annual_budget + settings.setup_cost;
-
-  const second_rent_due = settings.annual_rent / 2;
-  const today = new Date();
-  const second = new Date(settings.second_rent_date);
-  const monthsDiff =
-    (second.getFullYear() - today.getFullYear()) * 12 +
-    (second.getMonth() - today.getMonth());
-  const months_until_2nd_rent = Math.max(0, monthsDiff);
-  const monthly_save_needed =
-    second_rent_due / MEMBER_NAMES.length / Math.max(months_until_2nd_rent, 1);
-
   return {
+    members_count,
     total_expenses,
     total_paid,
     total_unpaid,
     per_member_share,
-    members,
+    per_member_monthly_target,
+    members: memberRows,
     annual_budget,
-    first_year_total,
-    second_rent_due,
-    months_until_2nd_rent,
-    monthly_save_needed,
   };
 }
 
 // ──────────────────────────────────────────
-// Monthly contribution target (from settings)
+// Helpers used by individual pages
 // ──────────────────────────────────────────
-export function computeMonthlyTarget(settings: Settings): number {
-  const annual_budget =
-    settings.annual_rent +
-    settings.setup_cost +
-    (settings.monthly_operating + settings.worker_monthly) * 12;
-  return Math.round(annual_budget / 9 / 12);
+export function computeAnnualBudget(costLines: CostLine[]): number {
+  return sumAnnualBudget(costLines);
+}
+
+export function computeMonthlyTargetFromLines(costLines: CostLine[], membersCount: number): number {
+  if (membersCount <= 0) return 0;
+  const annual = sumAnnualBudget(costLines);
+  return Math.round(annual / membersCount / 12);
+}
+
+/** Convert a free-text name into the synthetic email used by per-member auth. */
+export function nameToSyntheticEmail(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "member";
+  return `${slug}@family.local`;
+}
+
+/** Returns true if a string looks like an email. Used by login to decide
+ *  whether to slugify (member name) or just sign in directly (admin bootstrap). */
+export function looksLikeEmail(s: string): boolean {
+  return /@/.test(s) && /\./.test(s.split("@").pop() ?? "");
 }

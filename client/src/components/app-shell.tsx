@@ -14,16 +14,19 @@ import {
   ShieldCheck,
   BookOpen,
   LogOut,
+  Users,
+  FileBarChart2,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/language-context";
 import { useMember } from "@/lib/member-context";
 import { useAuth } from "@/lib/auth-context";
-import { fetchGovernance } from "@/lib/supabaseQueries";
+import { fetchGovernance, fetchMembers } from "@/lib/supabaseQueries";
 import { useQuery } from "@tanstack/react-query";
 
 const APP_NAME = (import.meta.env.VITE_APP_NAME as string | undefined) || "Family";
+const BOOTSTRAP_EMAIL = "raid.a.alghamdi@gmail.com";
 
 function Logo({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const { t } = useLanguage();
@@ -62,8 +65,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryFn: fetchGovernance,
   });
 
-  const budgetController = governance?.budget_controller ?? "Raid";
-  const isAdmin = !!currentMember && currentMember === budgetController;
+  const { data: members = [] } = useQuery({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+  });
+
+  const budgetController = governance?.budget_controller ?? "";
+  const prince = governance?.esteraha_prince ?? "";
+  const isPatriarch =
+    user?.email === BOOTSTRAP_EMAIL ||
+    (!!currentMember && currentMember === prince);
+  const isBudgetController =
+    isPatriarch ||
+    (!!currentMember && currentMember === budgetController);
 
   const NAV = [
     { href: "/", label: t("nav_dashboard"), icon: LayoutDashboard, testId: "link-dashboard" },
@@ -71,9 +85,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/contribute", label: t("nav_contribute"), icon: Wallet, testId: "link-contribute" },
     { href: "/expenses", label: t("nav_expenses"), icon: ReceiptText, testId: "link-expenses" },
     { href: "/plan", label: t("nav_plan"), icon: CalendarDays, testId: "link-plan" },
+    { href: "/reports", label: t("nav_reports"), icon: FileBarChart2, testId: "link-reports" },
     { href: "/charter", label: t("nav_charter"), icon: BookOpen, testId: "link-charter" },
     { href: "/settings", label: t("nav_settings"), icon: SettingsIcon, testId: "link-settings" },
-    ...(isAdmin ? [{ href: "/admin", label: t("nav_admin"), icon: ShieldCheck, testId: "link-admin" }] : []),
+    ...(isPatriarch ? [{ href: "/members", label: t("nav_members"), icon: Users, testId: "link-members" }] : []),
+    ...(isBudgetController ? [{ href: "/admin", label: t("nav_admin"), icon: ShieldCheck, testId: "link-admin" }] : []),
   ];
 
   function toggleLang() {
@@ -81,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const navList = (
-    <nav className="flex flex-col gap-1">
+    <nav className="flex flex-col gap-1 print:hidden">
       {NAV.map((item) => {
         const active = location === item.href;
         const Icon = item.icon;
@@ -106,9 +122,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </nav>
   );
 
-  // Identity block — replaces the old "I am" picker
   const identityBlock = (
-    <div className="flex flex-col gap-2 pb-3 border-b border-white/10">
+    <div className="flex flex-col gap-2 pb-3 border-b border-white/10 print:hidden">
       <div className="text-[10px] uppercase tracking-[0.16em] text-secondary/60 font-semibold px-1">
         {t("signed_in_as")}
       </div>
@@ -138,8 +153,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background text-foreground">
       {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-e border-sidebar-border p-5 gap-4 sticky top-0 h-screen">
-        {/* Logo + language toggle at top */}
+      <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-e border-sidebar-border p-5 gap-4 sticky top-0 h-screen print:hidden">
         <div className="flex items-start justify-between gap-2">
           <Logo variant="dark" />
           <button
@@ -153,14 +167,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        {/* Identity */}
         {identityBlock}
 
         <div className="flex-1">{navList}</div>
 
         <div className="flex items-center justify-between border-t border-white/10 pt-4">
           <div className="text-xs leading-snug">
-            <div className="font-semibold text-white">{t("members_count")}</div>
+            <div className="font-semibold text-white">
+              {t("members_count_label").replace("{n}", String(members.length))}
+            </div>
             <div className="text-secondary/70">{t("members_location")}</div>
           </div>
           <button
@@ -176,7 +191,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile header */}
-      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-brand-dark text-white sticky top-0 z-30 border-b border-white/10">
+      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-brand-dark text-white sticky top-0 z-30 border-b border-white/10 print:hidden">
         <Logo variant="dark" />
         <div className="flex items-center gap-1">
           <button
@@ -209,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {mobileOpen && (
-        <div className="md:hidden bg-brand-dark text-white px-4 py-4 border-b border-white/10 space-y-3">
+        <div className="md:hidden bg-brand-dark text-white px-4 py-4 border-b border-white/10 space-y-3 print:hidden">
           {identityBlock}
           {navList}
         </div>

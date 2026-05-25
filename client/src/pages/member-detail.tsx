@@ -5,13 +5,13 @@ import { useLanguage } from "@/lib/language-context";
 import { useMember } from "@/lib/member-context";
 import {
   fetchExpenses,
-  fetchSettings,
+  fetchMembers,
+  fetchCostLines,
   fetchContributionsByMember,
   fetchGovernance,
   computeSummary,
 } from "@/lib/supabaseQueries";
 import { AttachReceiptDialog } from "@/components/attach-receipt-dialog";
-import { MEMBER_NAMES, type MemberName } from "@shared/schema";
 import { formatSAR, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, ReceiptText, Wallet, FileText, Image as ImageIcon } from "lucide-react";
@@ -41,15 +41,19 @@ export default function MemberDetailPage() {
   const params = useParams<{ name: string }>();
   const memberName = decodeURIComponent(params.name ?? "");
 
-  const isValidMember = MEMBER_NAMES.includes(memberName as MemberName);
+  const { data: members = [] } = useQuery({
+    queryKey: ["members"],
+    queryFn: fetchMembers,
+  });
+  const isValidMember = members.some((m) => m.name === memberName);
 
   const { data: expenses = [] } = useQuery({
     queryKey: ["expenses"],
     queryFn: fetchExpenses,
   });
-  const { data: settings } = useQuery({
-    queryKey: ["settings"],
-    queryFn: fetchSettings,
+  const { data: costLines = [] } = useQuery({
+    queryKey: ["costLines"],
+    queryFn: fetchCostLines,
   });
   const { data: contributions = [] } = useQuery({
     queryKey: ["contributions", memberName],
@@ -65,9 +69,9 @@ export default function MemberDetailPage() {
   );
 
   const summary = useMemo(() => {
-    if (!settings) return null;
-    return computeSummary(expenses, settings, approvedContributions);
-  }, [expenses, settings, approvedContributions]);
+    if (members.length === 0) return null;
+    return computeSummary(expenses, members, costLines, approvedContributions);
+  }, [expenses, members, costLines, approvedContributions]);
 
   const memberSummary = summary?.members.find((m) => m.name === memberName);
   const memberExpenses = expenses.filter((e) => e.status === "Paid" && e.paid_by === memberName);

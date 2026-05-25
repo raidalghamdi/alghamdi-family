@@ -19,6 +19,8 @@ import ContributePage from "@/pages/contribute";
 import AdminPage from "@/pages/admin";
 import CharterPage from "@/pages/charter";
 import MemberDetailPage from "@/pages/member-detail";
+import MembersPage from "@/pages/members";
+import ReportsPage from "@/pages/reports";
 
 function AppRouter() {
   return (
@@ -31,6 +33,8 @@ function AppRouter() {
       <Route path="/contribute" component={ContributePage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/charter" component={CharterPage} />
+      <Route path="/members" component={MembersPage} />
+      <Route path="/reports" component={ReportsPage} />
       <Route path="/member/:name" component={MemberDetailPage} />
       <Route component={NotFound} />
     </Switch>
