@@ -89,23 +89,26 @@ export default function ContributePage() {
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error(t("field_receipt_required"));
       if (!memberName) throw new Error(t("field_member_placeholder"));
       if (!paymentMethod) throw new Error(lang === "ar" ? "اختر طريقة الدفع" : "Select payment method");
 
       const amount = amountOverride ? parseFloat(amountOverride) : target;
       if (!amount || amount <= 0) throw new Error(lang === "ar" ? "المبلغ غير صالح" : "Invalid amount");
 
-      // Upload to Supabase Storage
-      const ext = file.name.split(".").pop() ?? "bin";
-      const path = `contributions/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("receipts")
-        .upload(path, file, { contentType: file.type });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      const { data: pub } = supabase.storage.from("receipts").getPublicUrl(path);
-      const receipt_url = pub.publicUrl;
+      // Receipt is optional — only upload when a file was chosen
+      let receipt_url: string | null = null;
+      let receipt_filename: string | null = null;
+      if (file) {
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `contributions/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("receipts")
+          .upload(path, file, { contentType: file.type });
+        if (uploadErr) throw new Error(uploadErr.message);
+        const { data: pub } = supabase.storage.from("receipts").getPublicUrl(path);
+        receipt_url = pub.publicUrl;
+        receipt_filename = file.name;
+      }
 
       return insertContribution({
         member_name: memberName,
@@ -113,7 +116,7 @@ export default function ContributePage() {
         amount,
         payment_method: paymentMethod,
         receipt_url,
-        receipt_filename: file.name,
+        receipt_filename,
         notes: notes || null,
         status: "Pending",
       });
@@ -153,7 +156,7 @@ export default function ContributePage() {
     }
   }
 
-  const canSubmit = !!memberName && !!month && !!paymentMethod && !!file && !submit.isPending;
+  const canSubmit = !!memberName && !!month && !!paymentMethod && !submit.isPending;
 
   return (
     <div className="p-5 md:p-8 lg:p-10 max-w-4xl mx-auto space-y-8">
@@ -253,7 +256,7 @@ export default function ContributePage() {
 
         {/* Receipt upload */}
         <div>
-          <label className="text-sm font-medium">{t("field_receipt")} <span className="text-destructive">*</span></label>
+          <label className="text-sm font-medium">{t("field_receipt")} <span className="text-muted-foreground text-xs">({t("optional")})</span></label>
           <input
             ref={fileInputRef}
             type="file"

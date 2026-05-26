@@ -87,19 +87,20 @@ export default function SubmitPage() {
 
   const submit = useMutation({
     mutationFn: async (values: FormValues) => {
-      if (!file) throw new Error(t("field_receipt_required"));
-
-      // Upload to Supabase Storage
-      const ext = file.name.split(".").pop() ?? "bin";
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("receipts")
-        .upload(path, file, { contentType: file.type });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      // Get public URL
-      const { data: pub } = supabase.storage.from("receipts").getPublicUrl(path);
-      const receipt_url = pub.publicUrl;
+      // Receipt is optional — only upload when a file was chosen
+      let receipt_url: string | null = null;
+      let receipt_filename: string | null = null;
+      if (file) {
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("receipts")
+          .upload(path, file, { contentType: file.type });
+        if (uploadErr) throw new Error(uploadErr.message);
+        const { data: pub } = supabase.storage.from("receipts").getPublicUrl(path);
+        receipt_url = pub.publicUrl;
+        receipt_filename = file.name;
+      }
 
       // Insert row
       const id = crypto.randomUUID();
@@ -113,7 +114,7 @@ export default function SubmitPage() {
         description: values.description,
         notes: values.notes ?? null,
         receipt_url,
-        receipt_filename: file.name,
+        receipt_filename,
         status: values.status ?? "Paid",
         created_at: new Date().toISOString(),
       });
@@ -148,14 +149,10 @@ export default function SubmitPage() {
   }
 
   const onSubmit = (values: FormValues) => {
-    if (!file) {
-      setFileError(t("field_receipt_required"));
-      return;
-    }
     submit.mutate(values);
   };
 
-  const canSubmit = form.formState.isValid && !!file && !submit.isPending;
+  const canSubmit = form.formState.isValid && !submit.isPending;
 
   return (
     <div className="p-5 md:p-8 lg:p-10 max-w-6xl mx-auto">
@@ -352,7 +349,7 @@ export default function SubmitPage() {
               {/* Receipt upload */}
               <div>
                 <label className="text-sm font-medium leading-none">
-                  {t("field_receipt")} <span className="text-destructive">*</span>
+                  {t("field_receipt")} <span className="text-muted-foreground text-xs">({t("optional")})</span>
                 </label>
                 <input
                   ref={fileInputRef}
